@@ -1,11 +1,13 @@
 services:
   postgres:
     image: postgres:15
+    ports: 
+      - 5432:5432
     restart: always
     volumes:
       - db_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${GQL_PG_PASSWORD}
   graphql-engine:
     image: hasura/graphql-engine:v2.46.0
     ports:
@@ -18,7 +20,7 @@ services:
       HASURA_GRAPHQL_DEV_MODE: "true" # disable for prod
       HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
       # HASURA_GRAPHQL_CONSOLE_ASSETS_DIR: /srv/console-assets # load assets from server instead of cdn
-      # HASURA_GRAPHQL_ADMIN_SECRET: myadminsecretkey # enable admin secret
+      HASURA_GRAPHQL_ADMIN_SECRET: ${GQL_HASURA_ADMIN_KEY}
       HASURA_GRAPHQL_METADATA_DEFAULTS: '{"backend_configs":{"dataconnector":{"athena":{"uri":"http://data-connector-agent:8081/api/v1/athena"},"mariadb":{"uri":"http://data-connector-agent:8081/api/v1/mariadb"},"mysql8":{"uri":"http://data-connector-agent:8081/api/v1/mysql"},"oracle":{"uri":"http://data-connector-agent:8081/api/v1/oracle"},"snowflake":{"uri":"http://data-connector-agent:8081/api/v1/snowflake"}}}}'
     depends_on:
       data-connector-agent:
@@ -37,5 +39,31 @@ services:
       timeout: 10s
       retries: 5
       start_period: 5s
+  caddy:
+    container_name: caddy_server
+    image: caddy/caddy
+    depends_on:
+      - "graphql-engine"
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_certs:/root/.caddy
+  journal-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./app:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    stdin_open: true
+    tty: true
 volumes:
   db_data:
+  caddy_certs:
